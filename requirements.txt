@@ -1,0 +1,32 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+
+# LangChain / LangGraph
+langchain
+langchain-openai
+langchain-postgres
+langchain-community
+langgraph
+langgraph-checkpoint-postgres
+
+# DB
+sqlalchemy[asyncio]
+asyncpg
+alembic
+
+# Auth
+pyjwt
+
+# Tools calling the existing Node backend
+httpx
+
+# Scheduling (RAG re-ingestion)
+apscheduler
+
+# Optional: only needed if you pick Redis over the Postgres checkpointer
+redis
+
+# Tests
+pytest
+pytest-asyncio
