@@ -7,7 +7,15 @@ from app.config import settings
 
 
 class Base(DeclarativeBase):
-    pass
+    """READ-ONLY mirrors of Prisma-owned tables (schema "public"). Never
+    run create_all/migrations against this Base — Prisma owns these."""
+
+
+class AiBase(DeclarativeBase):
+    """This service's OWN tables (schema "ai_chat"). Deliberately a
+    separate declarative base + metadata from Base above, so
+    AiBase.metadata.create_all() can never touch a Prisma-owned table
+    even by accident — see scripts/init_ai_schema.py."""
 
 
 # statement_cache_size=0 disables asyncpg's prepared-statement cache, which

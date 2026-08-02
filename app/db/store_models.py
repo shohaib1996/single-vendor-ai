@@ -32,6 +32,11 @@ PaymentStatusEnum = PGEnum(
     name="PaymentStatus",
     create_type=False,
 )
+RoleEnum = PGEnum(
+    "USER", "ADMIN",
+    name="Role",
+    create_type=False,
+)
 
 
 class User(Base):
@@ -43,7 +48,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String)
     email: Mapped[str] = mapped_column(String)
-    role: Mapped[str] = mapped_column(String)  # "USER" | "ADMIN"
+    role: Mapped[str] = mapped_column(RoleEnum)
 
 
 class Product(Base):

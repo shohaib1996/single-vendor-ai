@@ -5,10 +5,17 @@ pydantic-settings
 # LangChain / LangGraph
 langchain
 langchain-openai
-langchain-postgres
+langchain-pinecone
 langchain-community
 langgraph
 langgraph-checkpoint-postgres
+
+# RAG vector store
+pinecone
+
+# Document text extraction (Train Bot uploads)
+pypdf
+python-multipart
 
 # DB
 sqlalchemy[asyncio]

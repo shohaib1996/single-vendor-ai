@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.db.session import async_session
 from app.db.store_models import Order, OrderItem
+from app.rag.vectorstore import get_vectorstore
 
 
 async def get_my_orders(user_id: str, status: str | None = None) -> list[dict]:
@@ -149,6 +150,15 @@ def _serialize_product_detail(product: dict | None) -> dict | None:
     }
 
 
+async def rag_search(query: str, k: int = 4) -> list[dict]:
+    """Semantic search over admin-trained knowledge (policies, FAQs, etc
+    submitted via the "Train Bot" admin feature — plan.txt section 4).
+    Not user-specific, so no ownership scoping needed."""
+    vectorstore = get_vectorstore()
+    docs = await vectorstore.asimilarity_search(query, k=k)
+    return [{"title": d.metadata.get("title"), "content": d.page_content} for d in docs]
+
+
 # --- LangChain tool wrappers, built fresh per request (graph.py) -----------
 #
 # user_id is bound here via closure — it is NEVER an LLM-fillable
@@ -198,12 +208,13 @@ def build_customer_tools(user_id: str | None) -> list:
         result = await get_product_details(product_id)
         return result or {"error": "Product not found"}
 
-    tools += [search_products_tool, get_product_details_tool]
+    @tool
+    async def rag_search_tool(query: str) -> list[dict]:
+        """Search the store's policy/knowledge base — return policy,
+        shipping, how order placing works, warranty, etc. Use this for
+        any question that isn't about a specific order or product."""
+        return await rag_search(query)
+
+    tools += [search_products_tool, get_product_details_tool, rag_search_tool]
 
     return tools
-
-
-# TODO:
-#   def rag_search(query: str) -> list[dict]
-#       app.rag.retriever similarity search over kb_documents/product/QnA
-#       (add to build_customer_tools once the RAG pipeline exists)

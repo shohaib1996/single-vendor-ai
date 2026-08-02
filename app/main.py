@@ -14,7 +14,7 @@ from app.agents.customer.tools import (
 from app.config import settings
 from app.deps.auth import get_current_user, get_current_user_optional
 from app.db.store_models import User
-from app.routers import health
+from app.routers import health, train
 
 # TODO (see ai-chatbot-plan.txt section 3): once built, also mount:
 #   from app.routers import chat_customer, chat_admin, ingest
@@ -33,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(train.router, prefix="/api/v1")
 
 
 # TEMPORARY test routes — delete once chat_customer.py + the real LangGraph
