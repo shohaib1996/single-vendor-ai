@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.agents.admin.graph import build_admin_graph
 from app.agents.customer.graph import build_customer_graph
 from app.agents.customer.tools import (
     get_my_orders,
@@ -12,7 +13,7 @@ from app.agents.customer.tools import (
     search_products,
 )
 from app.config import settings
-from app.deps.auth import get_current_user, get_current_user_optional
+from app.deps.auth import get_current_admin, get_current_user, get_current_user_optional
 from app.db.store_models import User
 from app.routers import health, train
 
@@ -104,6 +105,19 @@ async def chat_test(body: ChatTestBody, user: User | None = Depends(get_current_
             "user_id": user.id if user else None,
             "role": user.role if user else None,
         },
+        config={"configurable": {"thread_id": body.conversation_id}},
+    )
+    return {"reply": result["messages"][-1].content}
+
+
+# TEMPORARY: same stand-in pattern as /chat-test, for the admin agent.
+# Delete once chat_admin.py's real SSE endpoint (plan.txt section 7) exists.
+
+@app.post("/admin-chat-test")
+async def admin_chat_test(body: ChatTestBody, admin: User = Depends(get_current_admin)):
+    graph = build_admin_graph()
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content=body.message)], "user_id": admin.id},
         config={"configurable": {"thread_id": body.conversation_id}},
     )
     return {"reply": result["messages"][-1].content}

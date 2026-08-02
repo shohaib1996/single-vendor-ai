@@ -49,17 +49,47 @@ class User(Base):
     name: Mapped[str] = mapped_column(String)
     email: Mapped[str] = mapped_column(String)
     role: Mapped[str] = mapped_column(RoleEnum)
+    createdAt: Mapped[datetime] = mapped_column(DateTime)
+
+
+class Category(Base):
+    __tablename__ = "Category"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String)
 
 
 class Product(Base):
     __tablename__ = "Product"
 
-    # Minimal columns — just enough to label order items. Extend with
-    # more fields (description, images, stock, ...) when building the
-    # product search / RAG ingestion tools.
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String)
     price: Mapped[float] = mapped_column(Float)
+    stock: Mapped[int] = mapped_column(Integer)
+    categoryId: Mapped[str | None] = mapped_column(String, ForeignKey("Category.id"), nullable=True)
+
+    category: Mapped["Category | None"] = relationship()
+
+
+class ProductQuestion(Base):
+    __tablename__ = "ProductQuestion"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    question: Mapped[str] = mapped_column(String)
+    createdAt: Mapped[datetime] = mapped_column(DateTime)
+    productId: Mapped[str] = mapped_column(String, ForeignKey("Product.id"))
+
+    product: Mapped["Product"] = relationship()
+    answer: Mapped["ProductAnswer | None"] = relationship(back_populates="question", uselist=False)
+
+
+class ProductAnswer(Base):
+    __tablename__ = "ProductAnswer"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    questionId: Mapped[str] = mapped_column(String, ForeignKey("ProductQuestion.id"), unique=True)
+
+    question: Mapped["ProductQuestion"] = relationship(back_populates="answer")
 
 
 class Order(Base):
@@ -101,9 +131,6 @@ class Payment(Base):
 
 
 # TODO — add as tools need them:
-#   class Category(Base):    __tablename__ = "Category"
 #   class Brand(Base):       __tablename__ = "Brand"
 #   class ProductSpecification(Base): __tablename__ = "ProductSpecification"
-#   class ProductQuestion(Base):      __tablename__ = "ProductQuestion"
-#   class ProductAnswer(Base):        __tablename__ = "ProductAnswer"
 #   class Review(Base):      __tablename__ = "Review"
