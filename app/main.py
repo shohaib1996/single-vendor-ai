@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.deps.auth import get_current_user
+from app.db.store_models import User
 from app.routers import health
 
 # TODO (see ai-chatbot-plan.txt section 3): once built, also mount:
@@ -21,3 +23,12 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+
+
+# TEMPORARY — checkpoint 2 from ai-chatbot-plan.txt: proves this service
+# can independently verify a JWT issued by the Node backend and re-fetch
+# the live user row from the shared DB. Delete once chat_customer.py is
+# wired up for real (get_current_user will be used there instead).
+@app.get("/whoami")
+async def whoami(user: User = Depends(get_current_user)):
+    return {"id": user.id, "name": user.name, "email": user.email, "role": user.role}
