@@ -47,3 +47,18 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "ADMIN":
         raise HTTPException(status_code=403, detail="Forbidden")
     return user
+
+
+async def get_current_user_optional(
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Like get_current_user, but returns None instead of 401 when there's
+    no/invalid token — for routes that serve both guests and logged-in
+    users (e.g. the customer chat endpoint, plan.txt section 5)."""
+    if not authorization:
+        return None
+    try:
+        return await get_current_user(authorization=authorization, db=db)
+    except HTTPException:
+        return None
