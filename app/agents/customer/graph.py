@@ -9,19 +9,12 @@
 # `prompt` kwarg was just renamed `system_prompt`.)
 
 from langchain.agents import create_agent
-from langgraph.checkpoint.memory import MemorySaver
 
+import app.core.memory as memory
 from app.agents.customer.prompts import SYSTEM_PROMPT
 from app.agents.customer.state import CustomerAgentState
 from app.agents.customer.tools import build_customer_tools
 from app.core.llm import get_customer_llm
-
-# TODO: swap for a durable Postgres/Redis checkpointer (plan.txt section 5
-# / section 12) once the `ai_chat` schema exists. MemorySaver keeps
-# conversation state only in this process's memory — fine for local
-# testing, but it's lost on restart and won't work across multiple
-# server workers.
-_checkpointer = MemorySaver()
 
 
 def build_customer_graph(user_id: str | None):
@@ -30,7 +23,9 @@ def build_customer_graph(user_id: str | None):
     Rebuilt per request rather than cached globally because the
     available tool set depends on user_id (see tools.py) — this keeps
     the user_id -> tool closure binding simple and unambiguous instead
-    of threading it through LangGraph's runtime config.
+    of threading it through LangGraph's runtime config. The checkpointer
+    itself IS shared/cached (see core/memory.py) — only the graph
+    wiring is rebuilt.
     """
     tools = build_customer_tools(user_id)
     llm = get_customer_llm()
@@ -39,5 +34,5 @@ def build_customer_graph(user_id: str | None):
         tools=tools,
         state_schema=CustomerAgentState,
         system_prompt=SYSTEM_PROMPT,
-        checkpointer=_checkpointer,
+        checkpointer=memory.checkpointer,
     )

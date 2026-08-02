@@ -8,7 +8,10 @@ langchain-openai
 langchain-pinecone
 langchain-community
 langgraph
-langgraph-checkpoint-postgres
+langgraph-checkpoint-postgres   # pulls in psycopg[binary] + psycopg-pool —
+                                # the durable checkpointer's DB driver,
+                                # separate from asyncpg used everywhere else
+                                # (see app/core/memory.py)
 
 # RAG vector store
 pinecone
@@ -31,7 +34,8 @@ httpx
 # Scheduling (RAG re-ingestion)
 apscheduler
 
-# Optional: only needed if you pick Redis over the Postgres checkpointer
+# Planned for rate limiting (plan.txt section 10) — NOT the checkpointer,
+# that's decided as Postgres now (app/core/memory.py)
 redis
 
 # Tests

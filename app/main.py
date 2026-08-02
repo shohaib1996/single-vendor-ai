@@ -1,11 +1,8 @@
-from langchain_core.messages import HumanMessage
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
-from app.agents.admin.graph import build_admin_graph
-from app.agents.customer.graph import build_customer_graph
 from app.agents.customer.tools import (
     get_my_orders,
     get_order_detail,
@@ -13,17 +10,26 @@ from app.agents.customer.tools import (
     search_products,
 )
 from app.config import settings
-from app.deps.auth import get_current_admin, get_current_user, get_current_user_optional
+from app.core.memory import close_checkpointer, init_checkpointer
+from app.deps.auth import get_current_user
 from app.db.store_models import User
-from app.routers import health, train
+from app.routers import chat_admin, chat_customer, health, train
 
-# TODO (see ai-chatbot-plan.txt section 3): once built, also mount:
-#   from app.routers import chat_customer, chat_admin, ingest
-#   app.include_router(chat_customer.router, prefix="/api/v1")
-#   app.include_router(chat_admin.router, prefix="/api/v1")
-#   app.include_router(ingest.router, prefix="/api/v1")
 
-app = FastAPI(title="single-vendor-ai")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Opens ONE persistent Postgres connection for the durable LangGraph
+    # checkpointer (core/memory.py) and keeps it for the app's lifetime —
+    # both agent graphs read app.core.memory.checkpointer at request time.
+    # Run uvicorn with --loop app.core.loop:loop_factory (Windows only
+    # needs this, but harmless elsewhere) — see core/memory.py's comment
+    # for why.
+    await init_checkpointer()
+    yield
+    await close_checkpointer()
+
+
+app = FastAPI(title="single-vendor-ai", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,11 +41,17 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(train.router, prefix="/api/v1")
+app.include_router(chat_customer.router, prefix="/api/v1")
+app.include_router(chat_admin.router, prefix="/api/v1")
+# TODO (see ai-chatbot-plan.txt section 3/7): also mount app/routers/ingest.py
+# once the deprioritized product/category auto-ingestion is built.
 
 
-# TEMPORARY test routes — delete once chat_customer.py + the real LangGraph
-# agent are wired up (these tool functions will be called from inside the
-# graph instead, with user_id bound from state, not a route param).
+# DEBUG routes — test individual tool functions directly, independent of
+# the chat endpoints above. Kept (not deleted with /chat-test and
+# /admin-chat-test, which were direct stand-ins for chat_customer.py/
+# chat_admin.py and are now redundant) since these are still useful for
+# isolating a tool-level bug from an agent/prompt-level one.
 
 @app.get("/whoami")
 async def whoami(user: User = Depends(get_current_user)):
@@ -84,40 +96,3 @@ async def product_detail_route(product_id: str):
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
-
-
-# TEMPORARY: synchronous, non-streaming stand-in for the real
-# POST /api/v1/chat/customer SSE endpoint (plan.txt section 7), just to
-# prove the LangGraph agent's tool-calling loop works end to end. Works
-# for both guests (no Authorization header) and logged-in users.
-
-class ChatTestBody(BaseModel):
-    message: str
-    conversation_id: str = "test-thread"
-
-
-@app.post("/chat-test")
-async def chat_test(body: ChatTestBody, user: User | None = Depends(get_current_user_optional)):
-    graph = build_customer_graph(user_id=user.id if user else None)
-    result = await graph.ainvoke(
-        {
-            "messages": [HumanMessage(content=body.message)],
-            "user_id": user.id if user else None,
-            "role": user.role if user else None,
-        },
-        config={"configurable": {"thread_id": body.conversation_id}},
-    )
-    return {"reply": result["messages"][-1].content}
-
-
-# TEMPORARY: same stand-in pattern as /chat-test, for the admin agent.
-# Delete once chat_admin.py's real SSE endpoint (plan.txt section 7) exists.
-
-@app.post("/admin-chat-test")
-async def admin_chat_test(body: ChatTestBody, admin: User = Depends(get_current_admin)):
-    graph = build_admin_graph()
-    result = await graph.ainvoke(
-        {"messages": [HumanMessage(content=body.message)], "user_id": admin.id},
-        config={"configurable": {"thread_id": body.conversation_id}},
-    )
-    return {"reply": result["messages"][-1].content}
