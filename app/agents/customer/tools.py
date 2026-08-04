@@ -81,6 +81,55 @@ def _serialize_order(order: Order, include_items: bool = False) -> dict:
 # spec-based filters, etc. (see plan.txt section 1). No ownership scoping
 # needed here since this data isn't user-specific.
 
+def _flatten_categories(categories: list[dict]) -> list[dict]:
+    """Recurses to whatever depth the category tree actually has — the
+    /categories response only nests one level today (e.g. Laptop >
+    Gaming/Business/Budget), but this must not assume that stays true."""
+    flat: list[dict] = []
+    for cat in categories:
+        flat.append(cat)
+        flat.extend(_flatten_categories(cat.get("children", [])))
+    return flat
+
+
+async def _resolve_category_id(query: str) -> str | None:
+    """The Node backend's product search ONLY does a substring match on
+    name/description — it never considers category. A real product named
+    "Bose QuietComfort Ultra" has no way to match a search for
+    "headphone" even though its category IS Headphone > Wired, so a
+    plain searchTerm query silently returns zero results (confirmed —
+    this is what a real user hit). Resolve category-shaped query terms
+    to a real categoryId first so search_products can use the backend's
+    recursive categoryId filter instead of a text match doomed to miss.
+
+    Not cached — the category tree is small and rarely changes, but this
+    adds one extra request per search_products call. Fine at this scale;
+    add a TTL cache here first if this ever shows up as a bottleneck.
+    """
+    async with httpx.AsyncClient(base_url=settings.NODE_API_BASE_URL, timeout=10) as client:
+        response = await client.get("/categories")
+        response.raise_for_status()
+        categories = response.json().get("data", [])
+
+    flat = _flatten_categories(categories)
+
+    query_lower = query.lower()
+    matches = [c for c in flat if c["name"].lower() in query_lower]
+    if not matches:
+        return None
+
+    # Prefer the most specific match. Name length alone isn't enough —
+    # "gaming laptop" matches BOTH "Laptop" (parent) and "Gaming" (child)
+    # and they're the same length, so a pure longest-name tiebreak picked
+    # the parent arbitrarily (confirmed: returned Business+Budget+Gaming
+    # laptops mixed together instead of just Gaming). Prefer any match
+    # that has a parent (i.e. is not top-level) before falling back to
+    # top-level matches, THEN break remaining ties by name length.
+    child_matches = [c for c in matches if c.get("parentId")]
+    candidates = child_matches or matches
+    return max(candidates, key=lambda c: len(c["name"]))["id"]
+
+
 async def search_products(
     query: str | None = None,
     category_id: str | None = None,
@@ -95,8 +144,21 @@ async def search_products(
     name->id resolution tool yet, so the agent should only pass this when
     it already has an id (e.g. from a prior search result).
     """
+    search_term = query
+
+    if query and category_id is None:
+        resolved = await _resolve_category_id(query)
+        if resolved:
+            # Use the resolved category filter INSTEAD of the raw text
+            # search — the backend ANDs searchTerm with categoryId, and
+            # the query text (e.g. "headphone") usually won't appear in
+            # the matching products' name/description, so keeping it
+            # would zero out the very results the category match found.
+            category_id = resolved
+            search_term = None
+
     params = {
-        "searchTerm": query,
+        "searchTerm": search_term,
         "categoryId": category_id,
         "brand": brand,
         "priceRangeMin": price_min,
@@ -126,6 +188,7 @@ async def get_product_details(product_id: str) -> dict | None:
 
 
 def _serialize_product_summary(product: dict) -> dict:
+    images = product.get("images") or []
     return {
         "id": product.get("id"),
         "name": product.get("name"),
@@ -134,6 +197,15 @@ def _serialize_product_summary(product: dict) -> dict:
         "stock": product.get("stock"),
         "category": (product.get("category") or {}).get("name"),
         "brand": (product.get("brand") or {}).get("name"),
+        # Relative path — resolves against whatever origin the storefront
+        # is actually served from (dev or prod), no frontend base URL
+        # needs configuring here. Distinctly-named from image_url on
+        # purpose — gpt-4o-mini confused a generic "url"/"image" pair,
+        # swapping which one it put in the Markdown link vs image tag
+        # (verified: it linked the product name to the image file and
+        # dropped the page link entirely). Explicit names fixed it.
+        "product_url": f"/products/{product.get('id')}",
+        "image_url": images[0] if images else None,
     }
 
 
