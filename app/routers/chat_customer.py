@@ -10,12 +10,14 @@ import json
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
 from app.agents.customer.graph import build_customer_graph
+from app.config import settings
+from app.core.rate_limit import check_rate_limit, rate_limit_key
 from app.db.store_models import User
 from app.deps.auth import get_current_user_optional
 
@@ -69,7 +71,16 @@ async def _extract_new_products(graph, config: dict, messages_before: int) -> li
 
 
 @router.post("/customer")
-async def chat_customer(body: ChatRequest, user: User | None = Depends(get_current_user_optional)):
+async def chat_customer(
+    body: ChatRequest, request: Request, user: User | None = Depends(get_current_user_optional)
+):
+    # Checked here, before the StreamingResponse starts — once SSE headers
+    # go out with a 200, there's no changing the status code mid-stream.
+    check_rate_limit(
+        rate_limit_key(request, user.id if user else None),
+        settings.RATE_LIMIT_CUSTOMER_PER_MINUTE,
+    )
+
     conversation_id = body.conversation_id or str(uuid.uuid4())
     graph = build_customer_graph(user_id=user.id if user else None)
     config = {"configurable": {"thread_id": conversation_id}}

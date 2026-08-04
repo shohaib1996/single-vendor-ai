@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # Shared-secret header for POST /api/v1/ingest — NOT a user JWT
     INTERNAL_INGEST_TOKEN: str
 
+    # Chat cost protection — see app/core/rate_limit.py
+    RATE_LIMIT_CUSTOMER_PER_MINUTE: int = 10
+    RATE_LIMIT_ADMIN_PER_MINUTE: int = 10
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

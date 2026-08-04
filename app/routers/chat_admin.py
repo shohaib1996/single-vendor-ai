@@ -9,12 +9,14 @@ import json
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 
 from app.agents.admin.graph import build_admin_graph
+from app.config import settings
+from app.core.rate_limit import check_rate_limit, rate_limit_key
 from app.db.store_models import User
 from app.deps.auth import get_current_admin
 
@@ -31,7 +33,9 @@ def _sse(data: dict) -> str:
 
 
 @router.post("/admin")
-async def chat_admin(body: ChatRequest, admin: User = Depends(get_current_admin)):
+async def chat_admin(body: ChatRequest, request: Request, admin: User = Depends(get_current_admin)):
+    check_rate_limit(rate_limit_key(request, admin.id), settings.RATE_LIMIT_ADMIN_PER_MINUTE)
+
     conversation_id = body.conversation_id or str(uuid.uuid4())
     graph = build_admin_graph()
 
