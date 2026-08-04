@@ -8,10 +8,14 @@ langchain-openai
 langchain-pinecone
 langchain-community
 langgraph
-langgraph-checkpoint-postgres   # pulls in psycopg[binary] + psycopg-pool —
-                                # the durable checkpointer's DB driver,
+langgraph-checkpoint-postgres   # the durable checkpointer's DB driver,
                                 # separate from asyncpg used everywhere else
                                 # (see app/core/memory.py)
+psycopg[binary]                 # bundles a precompiled libpq — without the
+                                 # [binary] extra pip installs bare psycopg,
+                                 # which needs the libpq system library that
+                                 # python:3.13-slim doesn't have
+psycopg-pool
 
 # RAG vector store
 pinecone
